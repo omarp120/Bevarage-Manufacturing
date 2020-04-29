@@ -1,0 +1,159 @@
+---
+title: "DATA624 Beverage Manufacturing Modeling Final Project"
+author: "Omar Pineda, Calvin Wong, Murali Kunissery"
+date: "4/15/2020"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    source_code: embed
+---
+
+Sidebar {.sidebar}
+-------------------------------------
+
+### Task
+
+This is role playing. I am your new boss. I am in charge of production at ABC Beverage and you are a team of data scientists reporting to me. My leadership has told me that new regulations are requiring us to understand our manufacturing process, the predictive factors and be able to report to them our predictive model of PH.
+
+Please use the historical data set I am providing. Build and report the factors in BOTH a technical and non-technical report.  I like to use Word and Excel. Please provide your non-technical report in a  business friendly readable document and your predictions in an Excel readable format. The technical report should show clearly the models you tested and how you selected your final approach.
+
+Please submit both Rpubs links and .rmd files or other readable formats for technical and non-technical reports.  Also submit the excel file showing the prediction of your models for pH.
+
+Row {.tabset .tabset-fade}
+-------------------------------------
+
+### Data
+
+```{r}
+library(caTools)
+library(DMwR)
+library(mlbench)
+library(randomForest)
+library(caret)
+library(rpart)
+library(xlsx)
+library(psych)
+```
+
+First, we load our dataset and explore some of the statistics for our variables. 
+
+```{r}
+bev <- read.xlsx("StudentData.xlsx", sheetName = "Subset")
+```
+
+We have 2,571 samples and 32 features that we can use to train our predictive model of PH. Here are summary statistics for our features:
+
+```{r}
+describe(bev)
+```
+
+We noticed that 4 samples had missing values for PH, so we decided to remove them from our analysis since we cannot use them to predict outcomes. This left us with 2,567 observations.
+
+Next, we use KNN imputation which imputes a missing value with the average weighted value of observations near/similar to it. We perform this imputation for missing values in all variables except for the response variable, PH.
+
+We also split our data into a training and test set, using 80% of our data to train our models and holding out 20% to test them.
+
+```{r}
+#removal of samples with missing PH values
+bev <- bev[!is.na(bev$PH),]
+
+#imputations
+bev_imp <- knnImputation(bev[, !names(bev) %in% "PH"])
+bev_imp$PH <- bev$PH
+
+#data splitting
+set.seed(101) 
+sample = sample.split(bev_imp$Brand.Code, SplitRatio = .8)
+bev_train = subset(bev_imp, sample == TRUE)
+bev_test  = subset(bev_imp, sample == FALSE)
+
+bev_train_X = subset(bev_train, select = -PH)
+bev_train_y = bev_train[,'PH']
+
+bev_test_X = subset(bev_test, select = -PH)
+bev_test_y = bev_test[,'PH']
+```
+
+### Linear Regression Model
+
+### Non-linear Regression Models
+
+### Tree Models
+
+In this next part, we consider various tree models to predict the PH of a beverage given our information about the 32 manufacturing features.
+
+Basic Regression Tree:
+
+```{r}
+bevb <- train(x = bev_train_X, y = bev_train_y, method = "rpart")
+bevb
+```
+
+```{r}
+bevbPred <- predict(bevb, newdata = bev_test_X)
+bevb.results <- postResample(pred = bevbPred, obs = bev_test_y)
+bevb.results
+```
+
+Random Forest:
+
+```{r}
+bevrf <- train(x = bev_train_X, y = bev_train_y, method = "rf")
+bevrf
+```
+
+```{r}
+bevrfPred <- predict(bevrf, newdata = bev_test_X)
+bevrf.results <- postResample(pred = bevrfPred, obs = bev_test_y)
+bevrf.results
+```
+
+XGBoost:
+
+XGBoost only manages numeric vectors, so we have to recode our Brand.Code feature into a number before tuning our model.
+
+```{r}
+bev_train_X2 <- bev_train_X
+bev_train_X2$Brand.Code <- as.numeric(bev_train_X2$Brand.Code)
+
+bevxgb <- train(x = bev_train_X2, y = bev_train_y, method = "xgbTree")
+bevxgb
+```
+
+```{r}
+bev_test_X2 <- bev_test_X
+bev_test_X2$Brand.Code <- as.numeric(bev_test_X2$Brand.Code)
+
+bevxgbPred <- predict(bevxgb, newdata = bev_test_X2)
+bevxgb.results <- postResample(pred = bevxgbPred, obs = bev_test_y)
+bevxgb.results
+```
+
+The results of these 3 models are summarized here:
+
+```{r}
+xgb <- as.data.frame(as.list(bevxgb.results))
+basic <- as.data.frame(as.list(bevb.results))
+rf <- as.data.frame(as.list(bevrf.results))
+xgb$model <- 'XGBoost'
+basic$model <- 'Basic Regression Tree'
+rf$model <- 'Random Forest'
+
+tree.outcomes <- rbind(xgb, basic, rf)
+tree.outcomes
+```
+
+We considered Basic Regression, Random Forest and XGBoost tree models, and Random Forest performed the best in predicting PH as it had the smallest RMSE value at 0.1 and an R^2 of 0.695.
+
+In this Random Forest model, these were the most important predictors:
+
+```{r}
+varImp(bevrf)
+```
+
+### Conclusion
+
+```{r}
+bev_eval <- read.xlsx("StudentEvaluation.xlsx", sheetName = "Subset (2)")
+```
+
